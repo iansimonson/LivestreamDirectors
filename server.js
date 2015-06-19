@@ -70,8 +70,56 @@ function requestHandler(req,res){
   } else if (req.method === 'POST'){
 
     if(req.url === '/directors'){
+      newDirector(req,res);
 
-      pool.getConnection(function(err,conn){
+    } else if(req.url ==='/favcam'){
+      res.end('connection POST on favcam'+'\n');
+    } else if (req.url === '/updatefilms'){
+      res.end('connection POST on updatefilms'+'\n');
+    } else {
+      res.writeHead(404,{'Content-Type': 'text/plain'});
+      res.end(req.url + ' is not an API endpoint');
+    }
+  }
+}
+
+
+
+function listDirectors(res){
+  pool.getConnection(function(err,conn){
+        if(err){
+          console.error('error connecting: ' + err);
+          res.writeHead(404, {'Content-Type': 'text/plain'});
+          res.end('CONNECTION FAILED');
+          return;
+        }
+
+        console.log('connected as id: ' + conn.threadId);
+
+        conn.query('SELECT * FROM directors',function(err,results,fields){
+          if(err) {
+            console.error(err);
+            conn.release();
+            res.writeHead(404, {'Content-Type': 'text/plain'});
+            res.end('ERROR QUERYING DATABASE\n');
+          }
+
+
+          res.writeHead(200,{'Content-Type': 'application/JSON'});
+          results.forEach(function(row){
+            console.log(JSON.stringify(row));
+            res.write(JSON.stringify(row) + '\n');
+          });
+          conn.release();
+          res.end();
+        });
+
+      });
+}
+
+
+function newDirector(req,res){
+  pool.getConnection(function(err,conn){
         if(err){
           console.error('error connecting: ' + err);
           res.writeHead(404,{'Content-Type': 'text/plain'});
@@ -119,50 +167,5 @@ function requestHandler(req,res){
             
           });
         });
-      });
-
-
-    } else if(req.url ==='/favcam'){
-      res.end('connection POST on favcam'+'\n');
-    } else if (req.url === '/updatefilms'){
-      res.end('connection POST on updatefilms'+'\n');
-    } else {
-      res.writeHead(404,{'Content-Type': 'text/plain'});
-      res.end(req.url + ' is not an API endpoint');
-    }
-  }
-}
-
-
-
-function listDirectors(res){
-  pool.getConnection(function(err,conn){
-        if(err){
-          console.error('error connecting: ' + err);
-          res.writeHead(404, {'Content-Type': 'text/plain'});
-          res.end('CONNECTION FAILED');
-          return;
-        }
-
-        console.log('connected as id: ' + conn.threadId);
-
-        conn.query('SELECT * FROM directors',function(err,results,fields){
-          if(err) {
-            console.error(err);
-            conn.release();
-            res.writeHead(404, {'Content-Type': 'text/plain'});
-            res.end('ERROR QUERYING DATABASE\n');
-          }
-
-
-          res.writeHead(200,{'Content-Type': 'application/JSON'});
-          results.forEach(function(row){
-            console.log(JSON.stringify(row));
-            res.write(JSON.stringify(row) + '\n');
-          });
-          conn.release();
-          res.end();
-        });
-
       });
 }
