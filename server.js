@@ -58,32 +58,8 @@ function requestHandler(req,res){
 
 // Process GET requests (only /directors has a GET request handler)
   if(req.method === 'GET'){
-
-
     if(req.url === '/directors'){
-      pool.getConnection(function(err,conn){
-        if(err){
-          console.error('error connecting: ' + err);
-          res.writeHead(404, {'Content-Type': 'text/plain'});
-          res.end('CONNECTION FAILED');
-          return;
-        }
-
-        console.log('connected as id: ' + conn.threadId);
-
-        conn.query('SELECT * FROM directors',function(err,results,fields){
-          if(err) return console.error(err);
-
-          res.writeHead(200,{'Content-Type': 'application/JSON'});
-          results.forEach(function(row){
-            console.log(JSON.stringify(row));
-            res.write(JSON.stringify(row) + '\n');
-          });
-          conn.release();
-          res.end();
-        });
-
-      });
+      listDirectors(res);
     } else {
       res.writeHead(404,{'Content-Type': 'text/plain'});
       res.end('Can only GET on /directors');
@@ -155,4 +131,38 @@ function requestHandler(req,res){
       res.end(req.url + ' is not an API endpoint');
     }
   }
+}
+
+
+
+function listDirectors(res){
+  pool.getConnection(function(err,conn){
+        if(err){
+          console.error('error connecting: ' + err);
+          res.writeHead(404, {'Content-Type': 'text/plain'});
+          res.end('CONNECTION FAILED');
+          return;
+        }
+
+        console.log('connected as id: ' + conn.threadId);
+
+        conn.query('SELECT * FROM directors',function(err,results,fields){
+          if(err) {
+            console.error(err);
+            conn.release();
+            res.writeHead(404, {'Content-Type': 'text/plain'});
+            res.end('ERROR QUERYING DATABASE\n');
+          }
+
+
+          res.writeHead(200,{'Content-Type': 'application/JSON'});
+          results.forEach(function(row){
+            console.log(JSON.stringify(row));
+            res.write(JSON.stringify(row) + '\n');
+          });
+          conn.release();
+          res.end();
+        });
+
+      });
 }
