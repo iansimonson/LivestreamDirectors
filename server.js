@@ -57,8 +57,10 @@ function requestHandler(req,res){
 // Process GET requests (only /directors has a GET request handler)
   if(req.method === 'GET'){
     if(req.url === '/directors'){
+      console.log('new GET connection at /directors.');
       listDirectors(res);
     } else {
+      console.error('new connection attempted at ' + req.url + '.');
       routingError(res,req.url,req.method);
     }
 
@@ -67,13 +69,17 @@ function requestHandler(req,res){
   } else if (req.method === 'POST'){
 
     if(req.url === '/directors'){
+      console.log('new POST connection at /directors.');
       newDirector(req,res);
 
     } else if(req.url ==='/favcam'){
-      res.end('connection POST on favcam'+'\n');
+      console.log('new connection at /favcam.');
+      res.end('connection POST on favcam.\n');
     } else if (req.url === '/updatefilms'){
-      res.end('connection POST on updatefilms'+'\n');
+      console.log('new connection at /updatefilms.');
+      res.end('connection POST on updatefilms.\n');
     } else {
+      console.error('new connection attempted at ' + req.url + '.');
       routingError(res,req.url,req.method);
     }
   }
