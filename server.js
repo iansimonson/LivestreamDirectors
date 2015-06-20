@@ -50,7 +50,7 @@ console.log('Server running, listening on port: ' + port);
   GET /directors -> lists all directors registered
   POST /new livestream_id -> registers a new director using livestream_id
   POST /favcam livestream_id favorite_camera [auth] -> updates the favorite camera for the given livestream_id 
-  POST /updatefilms [auth] { type:add/remove/replace films:[list,of,films] } -> updates the favorite films list
+  POST /updatemovies [auth] { operation:add/remove/replace movies:[list,of,films] } -> updates the favorite films list
 ************************/
 
 function requestHandler(req,res){
@@ -72,12 +72,12 @@ function requestHandler(req,res){
       console.log('new POST connection at /directors.');
       newDirector(req,res);
 
-    } else if(req.url ==='/favcam'){
-      console.log('new connection at /favcam.');
+    } else if(req.url ==='/updatecam'){
+      console.log('new connection at /updatecam.');
       updateCamera(req,res);  
-    } else if (req.url === '/updatefilms'){
-      console.log('new connection at /updatefilms.');
-      res.end('connection POST on updatefilms.\n');
+    } else if (req.url === '/updatemovies'){
+      console.log('new connection at /updatemovies.');
+      updateMovies(req,res);
     } else {
       routingError(res,req.url,req.method);
     }
@@ -91,6 +91,7 @@ function routingError(res,url,method){
   res.end(url + ' either does not exist or does not support ' + method + ' requests.\n');
   return;
 }
+
 
 function connectionError(err,res){
   console.error('Error Connecting: ' + err);
@@ -237,6 +238,79 @@ function updateCamera(req,res){
         });
       });
     });
+
+  });
+}
+
+function updateMovies(req,res){
+  pool.getConnection(function(err,conn){
+    if(err) return connectionError(err,res);
+    console.log('connected as id: ' + conn.threadId);
+
+    // Collect the POST values
+    // POST values are in JSON string format
+    var postbody = '';
+    req.on('data',function(data){
+      postbody += data;
+
+      // Check to see if connection is trying to crash system
+      // if so, destroy connection.
+      if(postbody.length > 1e6){
+        req.connection.destroy();
+      }
+    });
+
+    req.on('end',function(){
+      var post = JSON.parse(postbody);
+
+      conn.query('SELECT * FROM directors WHERE livestream_id = ?',post.livestream_id,function(err,results){
+        if(err) return updateError(err,res);
+
+        if(post.Authorization !== 'Bearer ' + md5(results[0].full_name)){
+          console.error('Error: Unauthorized attempt to update "favorite_films".');
+          res.writeHead(401,{'Content-Type':'text/plain'});
+          res.end('Error: Authorization not recognized.\n');
+          return;
+        }
+
+        var director = results[0];
+        var movies = (director.favorite_movies === null ? [] : director.favorite_movies.split(','));
+        var newMovies = post.movies;
+
+        // console.log(movies);
+        // console.log(newMovies);
+        // res.end();
+
+        if(post.operation === 'add'){
+          movies.push(newMovies);
+        } else if(post.operation === 'delete'){
+          newMovies.forEach(function(movie){
+            var i = movies.indexOf(movie);
+            if(i !== -1)
+              movies.splice(i,1);
+          });
+        } else if(post.operation === 'replace'){
+          movies = newMovies;
+        } else {
+          console.error('Error: operation ' + post.operation + ' is not valid.');
+          res.writeHead(400,{'Content-Type':'text/plain'});
+          res.end('Error: operation ' + post.operation + ' not permitted.\n');
+          return;
+        }
+
+        conn.query('UPDATE directors SET favorite_movies=? WHERE livestream_id=?',[movies.toString(),post.livestream_id],function(err,result){
+          if(err) return updateError(err,res);
+
+          res.writeHead(200,{'Content-Type':'application/json'});
+          res.end('Favorite Movies successfully updated\n');
+          conn.release();
+        });
+
+
+
+      });
+    });
+
 
   });
 }
