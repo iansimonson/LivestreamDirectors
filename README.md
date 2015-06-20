@@ -47,3 +47,21 @@ The directors are stored in a mySQL table with the following columns
 3. dob - datetime, the date of birth (also pulled from account info)
 4. favorite_camera - varchar(255), the director's favorite camera as a string
 5. favorite_movies - text, a JSON string listing the director's favorite movie.
+
+Testing
+------
+
+Testing of the API was done using cURL on the command line.
+
+For the GET (listing directors) interface the following were used:
+
+1. curl localhost:8500/directors (this should work correctly)
+2. curl localhost:8500/updatemovies (or any other path, should return 'invalid')
+
+For the POST interfaces the following was used:
+
+1. curl -H "Content-Type: application/json" -X POST -d '{"livestream_id":6488824,"Authorization":"Bearer 0c1f04161f135b59960cc73854c46177","movies":["south park","kung fury"],"operation":"replace"}' http://localhost:8500/updatemovies
+
+The POST data (that within the -d 'data') was altered to throw non JSON or syntax errored versions at the server.
+
+Error messages are both logged by the server on the console and a similar (but client related) message was sent to the client.
