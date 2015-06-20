@@ -5,6 +5,30 @@ This is a small API built for Livestream which allows users with Livestream acco
 
 API Endpoints
 ------
+###/directors
+
+This endpoint allows for GET and POST requests. GET requests are handled by returning the list of directors registered on the service. They are returned as a series of JSON strings separated by newlines. For POST requests, the caller must supply a Livestream user ID. This id is used to call Livestream's servers and create a new director account. This request responds with the JSON string for the newly created director or an error message if the director account already exists.
+
+###/updatecam
+
+This endpoint takes POST requests only. The caller must provide the following as JSON:
+
+1. Livestream_id
+2. favorite_camera (a string)
+3. Authorization (formatted: 'Bearer: md5(full_name)')
+
+This endpoint overwrites the current favorite camera of a given director.
+
+###/updatemovies
+
+This endpoint takes POST requests only. The caller must provide the following as JSON:
+
+1. Livestream_id
+2. Authorization (formatted: 'Bearer: md5(full_name)')
+3. operation (add/delete/replace)
+4. movies (as an array e.g. movies:['jurrasic park','up'])
+
+The endpoint updates the list of favorite movies depending on the operation provided. If the operation is add, the api pushes the list of movies provided onto the current list of movies. If the operation is delete, the api removes the designated movies (if they are in the list) from the current list of favorite movies. Lastly, if the operation is replace, the current list of favorite movies is replaced with the provided list.
 
 Server Representation
 ------
