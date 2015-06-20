@@ -200,7 +200,18 @@ function newDirector(req,res){
         // collect the account info from Livestream
         // and create a new director
         req.on('end',function(){
-          var post = JSON.parse(postbody);
+          var post;
+          try {
+            post = JSON.parse(postbody);
+            if(!post.hasOwnProperty('livestream_id'))
+              throw 'Error: Missing livestream_id'; 
+          } catch(err){
+            console.error('Invalid POST content on /directors.');
+            console.error(err);
+            res.end('Invalid POST content.\n');
+            conn.release();
+            return;
+          }
           
           https.get('https://api.new.livestream.com/accounts/' + post.livestream_id,function(response){
             var resbody = '';
@@ -215,7 +226,18 @@ function newDirector(req,res){
             // Create the new account after parsing
             // the JSON retrieved from Livestream
             response.on('end',function(){
-              var resJSON = JSON.parse(resbody);
+              var resJSON
+              try{
+                resJSON = JSON.parse(resbody);
+                if(!resJSON.hasOwnProperty('full_name') || !resJSON.hasOwnProperty('dob'))
+                  throw 'Error: Livestream JSON missing necessary parameters.';
+              } catch(err){
+                console.error('Invalid response from LIVESTREAM.');
+                console.error(err);
+                res.end('Received invalid response from LIVESTREAM.\n');
+                conn.release();
+                return;
+              }
 
               // JSON uses datetime string as: 'YYYY-MM-DDTHH:MM:SS[.frac]Z'
               // MySQL uses datetime string as: 'YYYY-MM-DD HH:MM:SS[.frac]'
