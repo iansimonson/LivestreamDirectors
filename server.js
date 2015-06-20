@@ -287,7 +287,19 @@ function updateCamera(req,res){
       }
     });
     req.on('end',function(){
-      var post = JSON.parse(postbody);
+      var post;
+      try{
+        post = JSON.parse(postbody);
+        if(!post.hasOwnProperty('livestream_id') || !post.hasOwnProperty('favorite_camera'))
+          throw 'Error: missing necessary property from POST request.';
+      } catch (err){
+        console.error('Invalid JSON from POST request on /updatecam.');
+        console.error(err);
+        res.end('Invalid POST content.\n');
+        conn.release();
+        return;
+      }
+
       conn.query('SELECT * FROM directors WHERE livestream_id = ?',post.livestream_id,function(err,results){
         if(err) return updateError(err,res);
 
@@ -329,12 +341,15 @@ FUNCTION: updateMovies
     List of Movies as an Array
 */
 function updateMovies(req,res){
+
+  // OPEN DATABASE CONNECTION
   pool.getConnection(function(err,conn){
     if(err) return connectionError(err,res);
     console.log('connected as id: ' + conn.threadId);
 
+
     // Collect the POST values
-    // POST values are in JSON string format
+    // POST values *should be* in JSON string format
     var postbody = '';
     req.on('data',function(data){
       postbody += data;
@@ -346,12 +361,37 @@ function updateMovies(req,res){
       }
     });
 
+    // Here the entire POST information
+    // has been collected and we can now
+    // do something useful with it
     req.on('end',function(){
-      var post = JSON.parse(postbody);
+      
+      // Handle errors if POST request not
+      // formatted correctly
+      var post; 
+      try{
 
+        post = JSON.parse(postbody);
+        if(!post.hasOwnProperty('livestream_id') || !post.hasOwnProperty('operation') || !post.hasOwnProperty('movies'))
+          throw 'Error: Missing necessary property from POST request';
+
+      } catch(err){
+
+        console.error('Invalid JSON from POST request on /updatemovies.');
+        console.error(err);
+        res.end('Invalid POST content.\n');
+        conn.release();
+        return;
+
+      }
+
+      // Get the requested director (livestream_id is a unique key)
       conn.query('SELECT * FROM directors WHERE livestream_id = ?',post.livestream_id,function(err,results){
         if(err) return updateError(err,res);
 
+        // Check the authorization parameters
+        // If the user does not supply Authorization
+        // The server sends an error message to the client
         if(post.Authorization !== 'Bearer ' + md5(results[0].full_name)){
           console.error('Error: Unauthorized attempt to update "favorite_films".');
           res.writeHead(401,{'Content-Type':'text/plain'});
@@ -359,6 +399,8 @@ function updateMovies(req,res){
           return;
         }
 
+        // At this point we are connected, the POST data is
+        // correct. Update the list of movies
         var director = results[0];
         var movies = (director.favorite_movies === null ? [] : director.favorite_movies.split(','));
         var newMovies = post.movies;
@@ -367,16 +409,41 @@ function updateMovies(req,res){
         // console.log(newMovies);
         // res.end();
 
+        /* Operation: add
+              simply pushes the new list of movies onto the old list
+        */ 
         if(post.operation === 'add'){
+
           movies.push(newMovies);
+
+
+        /* Operation: delete
+              if a movie in the supplied list of movies
+              is already a favorite movie, remove that movie
+              otherwise do nothing.
+        */
         } else if(post.operation === 'delete'){
+
           newMovies.forEach(function(movie){
             var i = movies.indexOf(movie);
             if(i !== -1)
               movies.splice(i,1);
           });
+
+
+        /* Operation: replace
+            during this operation the current fav. movies array
+            is replaced with the supplied array
+        */
         } else if(post.operation === 'replace'){
+
           movies = newMovies;
+
+
+        /* Otherwise
+            the oepration is not permitted.
+            send an error to the user (it's their fault in this case.)
+        */
         } else {
           console.error('Error: operation ' + post.operation + ' is not valid.');
           res.writeHead(400,{'Content-Type':'text/plain'});
@@ -384,6 +451,7 @@ function updateMovies(req,res){
           return;
         }
 
+        // Everything is fine. Update the database.
         conn.query('UPDATE directors SET favorite_movies=? WHERE livestream_id=?',[movies.toString(),post.livestream_id],function(err,result){
           if(err) return updateError(err,res);
 
@@ -391,12 +459,7 @@ function updateMovies(req,res){
           res.end('Favorite Movies successfully updated\n');
           conn.release();
         });
-
-
-
       });
     });
-
-
   });
 }
