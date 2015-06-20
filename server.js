@@ -2,10 +2,7 @@
 
 var http = require('http');
 var https = require('https');
-var url = require('url');
 var mysql = require('mysql');
-var qs = require('querystring');
-
 
 
 /****************************
@@ -18,6 +15,7 @@ var port = process.argv[2];
 var username = process.argv[3];
 var pswd = process.argv[4];
 
+
 //Create the MySQL POOL used to
 //handle multiple connections and queries
 var pool = mysql.createPool({
@@ -27,12 +25,13 @@ var pool = mysql.createPool({
 });
 
 
-
-
 // Create the server
 
 http.createServer(requestHandler).listen(port);
 console.log('Server running, listening on port: ' + port);
+
+
+
 
 
 
@@ -54,15 +53,13 @@ console.log('Server running, listening on port: ' + port);
 ************************/
 
 function requestHandler(req,res){
-  var reqObj = url.parse(req.url,true);
 
 // Process GET requests (only /directors has a GET request handler)
   if(req.method === 'GET'){
     if(req.url === '/directors'){
       listDirectors(res);
     } else {
-      res.writeHead(404,{'Content-Type': 'text/plain'});
-      res.end('Can only GET on /directors');
+      routingError(res,req.url,req.method);
     }
 
 
@@ -77,32 +74,41 @@ function requestHandler(req,res){
     } else if (req.url === '/updatefilms'){
       res.end('connection POST on updatefilms'+'\n');
     } else {
-      res.writeHead(404,{'Content-Type': 'text/plain'});
-      res.end(req.url + ' is not an API endpoint');
+      routingError(res,req.url,req.method);
     }
   }
+}
+
+
+function routingError(res,url,method){
+  res.writeHead(404,{'Content-Type':'text/plain'});
+  res.end(url + ' either does not exist or does not support ' + method + ' requests.\n');
+}
+
+function connectionError(err,res){
+  console.error('Error Connecting: ' + err);
+  res.writeHead(520,{'Content-Type': 'text-plain'});
+  res.end('Error: database connection failed.\n');
+  return;
+}
+
+function updateError(err,res){
+  console.error('Error Updating: ' + err);
+  res.writeHead(520,{'Content-Type': 'text/plain'});
+  res.end('Error: updating database failed.\n');
+  return;
 }
 
 
 
 function listDirectors(res){
   pool.getConnection(function(err,conn){
-        if(err){
-          console.error('error connecting: ' + err);
-          res.writeHead(404, {'Content-Type': 'text/plain'});
-          res.end('CONNECTION FAILED');
-          return;
-        }
+        if(err) return connectionError(err,res);
 
         console.log('connected as id: ' + conn.threadId);
 
         conn.query('SELECT * FROM directors',function(err,results,fields){
-          if(err) {
-            console.error(err);
-            conn.release();
-            res.writeHead(404, {'Content-Type': 'text/plain'});
-            res.end('ERROR QUERYING DATABASE\n');
-          }
+          if(err) return updateError(err,res);
 
 
           res.writeHead(200,{'Content-Type': 'application/JSON'});
@@ -119,30 +125,35 @@ function listDirectors(res){
 
 
 function newDirector(req,res){
+  // Use the pool to generate a new database connection
   pool.getConnection(function(err,conn){
-        if(err){
-          console.error('error connecting: ' + err);
-          res.writeHead(404,{'Content-Type': 'text/plain'});
-          res.end('Connection failed.\n');
-          return;
-        }
-
+    // Error handling for the database connection
+        if(err) return connectionError(err,res);
         console.log('connected as id: ' + conn.threadId);
 
+
+        // Collect the POST values
+        // POST values are in JSON string format
         var postbody = '';
         req.on('data',function(data){
           postbody += data;
 
+          // Check to see if connection is trying to crash system
+          // if so, destroy connection.
           if(postbody.length > 1e6){
             req.connection.destroy();
           }
         });
 
+        // POST values collected, parse the JSON
+        // collect the account info from Livestream
+        // and create a new director
         req.on('end',function(){
           var post = JSON.parse(postbody);
           
           https.get('https://api.new.livestream.com/accounts/' + post.livestream_id,function(response){
             var resbody = '';
+
             response.on('data',function(data){
               resbody += data.toString();
               if(resbody.length > 1e6){
@@ -150,16 +161,22 @@ function newDirector(req,res){
               }
             });
 
+            // Create the new account after parsing
+            // the JSON retrieved from Livestream
             response.on('end',function(){
               var resJSON = JSON.parse(resbody);
-              var naccount = {'livestream_id': post.livestream_id,'full_name':resJSON.full_name,'dob':resJSON.dob.replace('T',' ').replace('Z','')};
-              conn.query('INSERT INTO directors SET ?',naccount,function(err,result){
-                if(err) {
-                  console.error(err);
-                  return res.end('Error: ' + err.message);
-                }
 
-                res.writeHead(200,{'Content-Type':'text/plain'});
+              // JSON uses datetime string as: 'YYYY-MM-DDTHH:MM:SS[.frac]Z'
+              // MySQL uses datetime string as: 'YYYY-MM-DD HH:MM:SS[.frac]'
+              // so, replace the T and Z with a space and empty.
+              var naccount = {'livestream_id': post.livestream_id,'full_name':resJSON.full_name,
+                'dob':resJSON.dob.replace('T',' ').replace('Z','')};
+              
+              // Use ? for auto-escaping to protect against SQL injection
+              conn.query('INSERT INTO directors SET ?',naccount,function(err,result){
+                if(err) return updateError(err,res);
+
+                res.writeHead(200,{'Content-Type':'application/json'});
                 res.end(JSON.stringify(naccount)+'\n');
                 conn.release();
               });
