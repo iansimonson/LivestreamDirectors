@@ -5,7 +5,7 @@ This is a small API built for Livestream which allows users with Livestream acco
 
 Run the server with the following:
 
-[code]node server.js port database_user database_password[/code]
+`node server.js port database_user database_password`
 
 Required Node.JS Modules
 ------
