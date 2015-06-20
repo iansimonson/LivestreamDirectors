@@ -50,7 +50,7 @@ The directors are stored in a mySQL table with the following columns
 2. full_name - varchar(255), (also pulled from livestream account info)
 3. dob - datetime, the date of birth (also pulled from account info)
 4. favorite_camera - varchar(255), the director's favorite camera as a string
-5. favorite_movies - text, a JSON string listing the director's favorite movie.
+5. favorite_movies - text, a string of comma separated elements listing the director's favorite movie.
 
 Testing
 ------
