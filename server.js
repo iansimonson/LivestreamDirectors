@@ -3,6 +3,7 @@
 var http = require('http');
 var https = require('https');
 var mysql = require('mysql');
+var md5 = require('MD5');
 
 
 /****************************
@@ -60,7 +61,6 @@ function requestHandler(req,res){
       console.log('new GET connection at /directors.');
       listDirectors(res);
     } else {
-      console.error('new connection attempted at ' + req.url + '.');
       routingError(res,req.url,req.method);
     }
 
@@ -74,12 +74,11 @@ function requestHandler(req,res){
 
     } else if(req.url ==='/favcam'){
       console.log('new connection at /favcam.');
-      res.end('connection POST on favcam.\n');
+      updateCamera(req,res);  
     } else if (req.url === '/updatefilms'){
       console.log('new connection at /updatefilms.');
       res.end('connection POST on updatefilms.\n');
     } else {
-      console.error('new connection attempted at ' + req.url + '.');
       routingError(res,req.url,req.method);
     }
   }
@@ -87,8 +86,10 @@ function requestHandler(req,res){
 
 
 function routingError(res,url,method){
+  console.error('new connection attempted at ' + url + '.');
   res.writeHead(404,{'Content-Type':'text/plain'});
   res.end(url + ' either does not exist or does not support ' + method + ' requests.\n');
+  return;
 }
 
 function connectionError(err,res){
@@ -119,7 +120,7 @@ function listDirectors(res){
 
           res.writeHead(200,{'Content-Type': 'application/JSON'});
           results.forEach(function(row){
-            console.log(JSON.stringify(row));
+            // console.log(JSON.stringify(row));
             res.write(JSON.stringify(row) + '\n');
           });
           conn.release();
@@ -191,4 +192,51 @@ function newDirector(req,res){
           });
         });
       });
+}
+
+function updateCamera(req,res){
+  pool.getConnection(function(err,conn){
+    if(err) return connectionError(err,res);
+
+    console.log('connected as id: ' + conn.threadId);
+
+    // Collect the POST values
+    // POST values are in JSON string format
+    var postbody = '';
+    req.on('data',function(data){
+      postbody += data;
+
+      // Check to see if connection is trying to crash system
+      // if so, destroy connection.
+      if(postbody.length > 1e6){
+        req.connection.destroy();
+      }
+    });
+    req.on('end',function(){
+      var post = JSON.parse(postbody);
+      conn.query('SELECT * FROM directors WHERE livestream_id = ?',post.livestream_id,function(err,results){
+        if(err) return updateError(err,res);
+
+
+        // console.log('Authorization: ' + post.Authorization);
+        // console.log('MySQL Authorization: ' + md5(result[0].full_name));
+        if(post.Authorization !== 'Bearer ' + md5(results[0].full_name)){
+          console.error('Error: Unauthorized attempt to update "favorite_camera".');
+          res.writeHead(401,{'Content-Type':'text/plain'});
+          res.end('Error: Authorization not recognized.\n');
+          return;
+        }
+
+        // console.log(post.favorite_camera);
+        conn.query('UPDATE directors SET favorite_camera=? WHERE livestream_id=?',[post.favorite_camera,results[0].livestream_id],function(err,result){
+          if(err) return updateError(err,res);
+
+          res.writeHead(200,{'Content-Type':'application/json'});
+          res.end('Favorite Camera successfully updated\n');
+          conn.release();
+        });
+      });
+    });
+
+  });
 }
