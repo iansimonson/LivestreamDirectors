@@ -3,6 +3,10 @@ Livestream Directors
 
 This is a small API built for Livestream which allows users with Livestream accounts to register as a film director. Directors can list their favorite camera, and favorite films as well as look up fellow directors.
 
+Run the server with the following:
+
+[code]node server.js port database_user database_password[/code]
+
 Required Node.JS Modules
 ------
 1. http
