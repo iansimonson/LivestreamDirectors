@@ -48,9 +48,9 @@ console.log('Server running, listening on port: ' + port);
  This function handles incoming requests to the http server
  Handled entry points:
   GET /directors -> lists all directors registered
-  POST /new livestream_id -> registers a new director using livestream_id
-  POST /favcam livestream_id favorite_camera [auth] -> updates the favorite camera for the given livestream_id 
-  POST /updatemovies [auth] { operation:add/remove/replace movies:[list,of,films] } -> updates the favorite films list
+  POST /new {livestream_id} -> registers a new director using livestream_id
+  POST /favcam {livestream_id, favorite_camera, [auth]} -> updates the favorite camera for the given livestream_id 
+  POST /updatemovies {livestream_id, operation, movies:[list,of,films] Authorization} -> updates the favorite films list
 ************************/
 
 function requestHandler(req,res){
@@ -85,6 +85,19 @@ function requestHandler(req,res){
 }
 
 
+/**************
+ERROR FUNCTIONS
+  The following functions are for error handling that happens
+  often. These error routines close the response streams from
+  the http requests.
+***************/
+
+/*
+FUNCTION: routingError
+  called when there is an erroneous api request
+  e.g. api endpoint doesn't exist or doesn't support
+  request type
+*/
 function routingError(res,url,method){
   console.error('new connection attempted at ' + url + '.');
   res.writeHead(404,{'Content-Type':'text/plain'});
@@ -93,6 +106,10 @@ function routingError(res,url,method){
 }
 
 
+/*
+FUNCTION: connectionError
+  called when the database cannot be reached
+*/
 function connectionError(err,res){
   console.error('Error Connecting: ' + err);
   res.writeHead(520,{'Content-Type': 'text-plain'});
@@ -100,6 +117,11 @@ function connectionError(err,res){
   return;
 }
 
+/*
+FUNCTION: updateError
+  called when an update request to the database
+  could not be completed.
+*/
 function updateError(err,res){
   console.error('Error Updating: ' + err);
   res.writeHead(520,{'Content-Type': 'text/plain'});
@@ -109,6 +131,20 @@ function updateError(err,res){
 
 
 
+
+/************
+HELPER FUNCTIONS
+  The following are the functions which
+  actually perform the operations required
+  by the API
+*************/
+
+/*
+FUNCTION: listDirectors
+  A helper function for the GET request to 
+  /directors. This function returns all directors
+  as a series of JSON strings separated by newlines
+*/
 function listDirectors(res){
   pool.getConnection(function(err,conn){
         if(err) return connectionError(err,res);
@@ -131,7 +167,14 @@ function listDirectors(res){
       });
 }
 
-
+/*
+FUNCTION: newDirector
+  called when the server receives a POST
+  request to the /directors endpoint
+  creates a new director if provided with
+  a Livestream account number. Otherwise
+  sends an error and closes the connection.
+*/
 function newDirector(req,res){
   // Use the pool to generate a new database connection
   pool.getConnection(function(err,conn){
@@ -195,6 +238,14 @@ function newDirector(req,res){
       });
 }
 
+/*
+FUNCTION: updateCamera
+  called when the server receives a POST
+  request to the /updatecamera endpoint.
+  Checks for authorization using md5
+  and if it matches the given account
+  number, updates the favorite camera string
+*/
 function updateCamera(req,res){
   pool.getConnection(function(err,conn){
     if(err) return connectionError(err,res);
@@ -242,6 +293,19 @@ function updateCamera(req,res){
   });
 }
 
+
+
+/*
+FUNCTION: updateMovies
+  called when the server receives a POST
+  request to /updatemovies
+
+  request must have:
+    Authorization (md5)
+    Livestream ID
+    Operation (add/delete/replace)
+    List of Movies as an Array
+*/
 function updateMovies(req,res){
   pool.getConnection(function(err,conn){
     if(err) return connectionError(err,res);
