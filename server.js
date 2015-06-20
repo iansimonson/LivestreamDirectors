@@ -178,32 +178,27 @@ FUNCTION: newDirector
 function newDirector(req,res){
   // Use the pool to generate a new database connection
   pool.getConnection(function(err,conn){
-    // Error handling for the database connection
         if(err) return connectionError(err,res);
         console.log('connected as id: ' + conn.threadId);
 
 
         // Collect the POST values
-        // POST values are in JSON string format
+        // POST values should in JSON string format
         var postbody = '';
         req.on('data',function(data){
           postbody += data;
 
-          // Check to see if connection is trying to crash system
-          // if so, destroy connection.
-          if(postbody.length > 1e6){
-            req.connection.destroy();
+          if(postbody.length > 1e6){ //Make sure server isn't
+            req.connection.destroy(); //being overloaded
           }
         });
 
-        // POST values collected, parse the JSON
-        // collect the account info from Livestream
-        // and create a new director
         req.on('end',function(){
+
           var post;
           try {
-            post = JSON.parse(postbody);
-            if(!post.hasOwnProperty('livestream_id'))
+            post = JSON.parse(postbody); //The POST data may not be in JSON format
+            if(!post.hasOwnProperty('livestream_id')) //Or contain the necessary parameters
               throw 'Error: Missing livestream_id'; 
           } catch(err){
             console.error('Invalid POST content on /directors.');
@@ -216,6 +211,9 @@ function newDirector(req,res){
           https.get('https://api.new.livestream.com/accounts/' + post.livestream_id,function(response){
             var resbody = '';
 
+
+            // Again collect the response data
+            // and parse the JSON
             response.on('data',function(data){
               resbody += data.toString();
               if(resbody.length > 1e6){
@@ -223,12 +221,10 @@ function newDirector(req,res){
               }
             });
 
-            // Create the new account after parsing
-            // the JSON retrieved from Livestream
             response.on('end',function(){
               var resJSON
               try{
-                resJSON = JSON.parse(resbody);
+                resJSON = JSON.parse(resbody); //Just in case Livestream's servers don't respond properly
                 if(!resJSON.hasOwnProperty('full_name') || !resJSON.hasOwnProperty('dob'))
                   throw 'Error: Livestream JSON missing necessary parameters.';
               } catch(err){
@@ -238,6 +234,7 @@ function newDirector(req,res){
                 conn.release();
                 return;
               }
+
 
               // JSON uses datetime string as: 'YYYY-MM-DDTHH:MM:SS[.frac]Z'
               // MySQL uses datetime string as: 'YYYY-MM-DD HH:MM:SS[.frac]'
@@ -275,21 +272,20 @@ function updateCamera(req,res){
     console.log('connected as id: ' + conn.threadId);
 
     // Collect the POST values
-    // POST values are in JSON string format
+    // POST values should in JSON string format
     var postbody = '';
     req.on('data',function(data){
       postbody += data;
 
-      // Check to see if connection is trying to crash system
-      // if so, destroy connection.
-      if(postbody.length > 1e6){
-        req.connection.destroy();
+      if(postbody.length > 1e6){ //Again, in case the server
+        req.connection.destroy(); //Is being overloaded
       }
     });
+
     req.on('end',function(){
       var post;
       try{
-        post = JSON.parse(postbody);
+        post = JSON.parse(postbody); //Check to make sure the POST values are accurate
         if(!post.hasOwnProperty('livestream_id') || !post.hasOwnProperty('favorite_camera'))
           throw 'Error: missing necessary property from POST request.';
       } catch (err){
@@ -361,9 +357,7 @@ function updateMovies(req,res){
       }
     });
 
-    // Here the entire POST information
-    // has been collected and we can now
-    // do something useful with it
+    
     req.on('end',function(){
       
       // Handle errors if POST request not
