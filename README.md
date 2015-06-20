@@ -3,6 +3,13 @@ Livestream Directors
 
 This is a small API built for Livestream which allows users with Livestream accounts to register as a film director. Directors can list their favorite camera, and favorite films as well as look up fellow directors.
 
+Required Node.JS Modules
+------
+1. http
+2. https
+3. mysql
+4. MD5
+
 API Endpoints
 ------
 ###/directors
@@ -39,4 +46,4 @@ The directors are stored in a mySQL table with the following columns
 2. full_name - varchar(255), (also pulled from livestream account info)
 3. dob - datetime, the date of birth (also pulled from account info)
 4. favorite_camera - varchar(255), the director's favorite camera as a string
-5. favorite_films - text, a JSON string listing the director's favorite film.
+5. favorite_movies - text, a JSON string listing the director's favorite movie.
