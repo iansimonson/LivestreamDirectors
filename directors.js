@@ -9,8 +9,12 @@ router.use(function timeLog(req,res,next){
 });
 
 router.get('/',function(req,res){
-  var directors = Director.find({},{'_id': false},getData);
-  sendData(res,directors);
+  var directors = Director.find({},{'_id': false},function(err,directors){
+    if(err) return console.error(err);
+    
+    console.log(directors);
+    res.json(directors);
+  });
 });
 
 router.get('/:id',function(req,res){
