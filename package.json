@@ -1,0 +1,28 @@
+{
+  "name": "livestreamdirectors",
+  "version": "1.0.0",
+  "description": "basic exercise for api",
+  "main": "server.js",
+  "scripts": {
+    "test": "mocha test",
+    "start": "node server.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/iansimonson/LivestreamDirectors.git"
+  },
+  "author": "Ian Simonson",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/iansimonson/LivestreamDirectors/issues"
+  },
+  "homepage": "https://github.com/iansimonson/LivestreamDirectors#readme",
+  "dependencies": {
+    "express": "^4.13.0",
+    "mongoose": "^4.0.6"
+  },
+  "devDependencies": {
+    "chai": "^3.0.0",
+    "mocha": "^2.2.5"
+  }
+}

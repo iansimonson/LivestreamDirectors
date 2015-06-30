@@ -1,10 +1,10 @@
 // Import required modules
 
-var http = require('http');
 var https = require('https');
-var mysql = require('mysql');
-var md5 = require('MD5');
-
+var express = require('express');
+var directors = require('./directors');
+var path = require('path');
+var mongoose = require('mongoose');
 
 /****************************
   Sets up the port the server will listen on
@@ -16,19 +16,19 @@ var port = process.argv[2];
 var username = process.argv[3];
 var pswd = process.argv[4];
 
+var app = express();
 
-//Create the MySQL POOL used to
-//handle multiple connections and queries
-var pool = mysql.createPool({
-  user: username,
-  password: pswd,
-  database: 'director_registry'
-});
+app.use('/directors',directors);
+
+
+var db = mongoose.connection;
+db.on('error',console.error);
+mongoose.connect('mongodb://localhost/directors_registry');
 
 
 // Create the server
 
-http.createServer(requestHandler).listen(port);
+var server = app.listen(port);
 console.log('Server running, listening on port: ' + port);
 
 
@@ -42,47 +42,6 @@ console.log('Server running, listening on port: ' + port);
 // BELOW THIS LINE THERE ARE HELPER FUNCTIONS AND HANDLERS.
 
 // ============================================================================= \\
-
-/***********************
- FUNCTION: requestHandler(request, response)
- This function handles incoming requests to the http server
- Handled entry points:
-  GET /directors -> lists all directors registered
-  POST /new {livestream_id} -> registers a new director using livestream_id
-  POST /favcam {livestream_id, favorite_camera, [auth]} -> updates the favorite camera for the given livestream_id 
-  POST /updatemovies {livestream_id, operation, movies:[list,of,films] Authorization} -> updates the favorite films list
-************************/
-
-function requestHandler(req,res){
-
-// Process GET requests (only /directors has a GET request handler)
-  if(req.method === 'GET'){
-    if(req.url === '/directors'){
-      console.log('new GET connection at /directors.');
-      listDirectors(res);
-    } else {
-      routingError(res,req.url,req.method);
-    }
-
-
-// Process POST requests
-  } else if (req.method === 'POST'){
-
-    if(req.url === '/directors'){
-      console.log('new POST connection at /directors.');
-      newDirector(req,res);
-
-    } else if(req.url ==='/updatecam'){
-      console.log('new connection at /updatecam.');
-      updateCamera(req,res);  
-    } else if (req.url === '/updatemovies'){
-      console.log('new connection at /updatemovies.');
-      updateMovies(req,res);
-    } else {
-      routingError(res,req.url,req.method);
-    }
-  }
-}
 
 
 /**************
@@ -127,333 +86,4 @@ function updateError(err,res){
   res.writeHead(520,{'Content-Type': 'text/plain'});
   res.end('Error: updating database failed.\n');
   return;
-}
-
-
-
-
-/************
-HELPER FUNCTIONS
-  The following are the functions which
-  actually perform the operations required
-  by the API
-*************/
-
-/*
-FUNCTION: listDirectors
-  A helper function for the GET request to 
-  /directors. This function returns all directors
-  as a series of JSON strings separated by newlines
-*/
-function listDirectors(res){
-  pool.getConnection(function(err,conn){
-        if(err) return connectionError(err,res);
-
-        console.log('connected as id: ' + conn.threadId);
-
-        conn.query('SELECT * FROM directors',function(err,results,fields){
-          if(err) return updateError(err,res);
-
-
-          res.writeHead(200,{'Content-Type': 'application/JSON'});
-          results.forEach(function(row){
-            // console.log(JSON.stringify(row));
-            res.write(JSON.stringify(row) + '\n');
-          });
-          conn.release();
-          res.end();
-        });
-
-      });
-}
-
-/*
-FUNCTION: newDirector
-  called when the server receives a POST
-  request to the /directors endpoint
-  creates a new director if provided with
-  a Livestream account number. Otherwise
-  sends an error and closes the connection.
-*/
-function newDirector(req,res){
-  // Use the pool to generate a new database connection
-  pool.getConnection(function(err,conn){
-        if(err) return connectionError(err,res);
-        console.log('connected as id: ' + conn.threadId);
-
-
-        // Collect the POST values
-        // POST values should in JSON string format
-        var postbody = '';
-        req.on('data',function(data){
-          postbody += data;
-
-          if(postbody.length > 1e6){ //Make sure server isn't
-            req.connection.destroy(); //being overloaded
-          }
-        });
-
-        req.on('end',function(){
-
-          var post;
-          try {
-            post = JSON.parse(postbody); //The POST data may not be in JSON format
-            if(!post.hasOwnProperty('livestream_id')) //Or contain the necessary parameters
-              throw 'Error: Missing livestream_id'; 
-          } catch(err){
-            console.error('Invalid POST content on /directors.');
-            console.error(err);
-            res.end('Invalid POST content.\n');
-            conn.release();
-            return;
-          }
-          
-          https.get('https://api.new.livestream.com/accounts/' + post.livestream_id,function(response){
-            var resbody = '';
-
-
-            // Again collect the response data
-            // and parse the JSON
-            response.on('data',function(data){
-              resbody += data.toString();
-              if(resbody.length > 1e6){
-                req.connection.destroy();
-              }
-            });
-
-            response.on('end',function(){
-              var resJSON
-              try{
-                resJSON = JSON.parse(resbody); //Just in case Livestream's servers don't respond properly
-                if(!resJSON.hasOwnProperty('full_name') || !resJSON.hasOwnProperty('dob'))
-                  throw 'Error: Livestream JSON missing necessary parameters.';
-              } catch(err){
-                console.error('Invalid response from LIVESTREAM.');
-                console.error(err);
-                res.end('Received invalid response from LIVESTREAM.\n');
-                conn.release();
-                return;
-              }
-
-
-              // JSON uses datetime string as: 'YYYY-MM-DDTHH:MM:SS[.frac]Z'
-              // MySQL uses datetime string as: 'YYYY-MM-DD HH:MM:SS[.frac]'
-              // so, replace the T and Z with a space and empty.
-              var naccount = {'livestream_id': post.livestream_id,'full_name':resJSON.full_name,
-                'dob':resJSON.dob.replace('T',' ').replace('Z','')};
-              
-              // Use ? for auto-escaping to protect against SQL injection
-              conn.query('INSERT INTO directors SET ?',naccount,function(err,result){
-                if(err) return updateError(err,res);
-
-                res.writeHead(200,{'Content-Type':'application/json'});
-                res.end(JSON.stringify(naccount)+'\n');
-                conn.release();
-              });
-            });
-            
-          });
-        });
-      });
-}
-
-/*
-FUNCTION: updateCamera
-  called when the server receives a POST
-  request to the /updatecamera endpoint.
-  Checks for authorization using md5
-  and if it matches the given account
-  number, updates the favorite camera string
-*/
-function updateCamera(req,res){
-  pool.getConnection(function(err,conn){
-    if(err) return connectionError(err,res);
-
-    console.log('connected as id: ' + conn.threadId);
-
-    // Collect the POST values
-    // POST values should in JSON string format
-    var postbody = '';
-    req.on('data',function(data){
-      postbody += data;
-
-      if(postbody.length > 1e6){ //Again, in case the server
-        req.connection.destroy(); //Is being overloaded
-      }
-    });
-
-    req.on('end',function(){
-      var post;
-      try{
-        post = JSON.parse(postbody); //Check to make sure the POST values are accurate
-        if(!post.hasOwnProperty('livestream_id') || !post.hasOwnProperty('favorite_camera'))
-          throw 'Error: missing necessary property from POST request.';
-      } catch (err){
-        console.error('Invalid JSON from POST request on /updatecam.');
-        console.error(err);
-        res.end('Invalid POST content.\n');
-        conn.release();
-        return;
-      }
-
-      conn.query('SELECT * FROM directors WHERE livestream_id = ?',post.livestream_id,function(err,results){
-        if(err) return updateError(err,res);
-
-
-        // console.log('Authorization: ' + post.Authorization);
-        // console.log('MySQL Authorization: ' + md5(result[0].full_name));
-        if(post.Authorization !== 'Bearer ' + md5(results[0].full_name)){
-          console.error('Error: Unauthorized attempt to update "favorite_camera".');
-          res.writeHead(401,{'Content-Type':'text/plain'});
-          res.end('Error: Authorization not recognized.\n');
-          return;
-        }
-
-        // console.log(post.favorite_camera);
-        conn.query('UPDATE directors SET favorite_camera=? WHERE livestream_id=?',[post.favorite_camera,results[0].livestream_id],function(err,result){
-          if(err) return updateError(err,res);
-
-          res.writeHead(200,{'Content-Type':'application/json'});
-          res.end('Favorite Camera successfully updated\n');
-          conn.release();
-        });
-      });
-    });
-
-  });
-}
-
-
-
-/*
-FUNCTION: updateMovies
-  called when the server receives a POST
-  request to /updatemovies
-
-  request must have:
-    Authorization (md5)
-    Livestream ID
-    Operation (add/delete/replace)
-    List of Movies as an Array
-*/
-function updateMovies(req,res){
-
-  // OPEN DATABASE CONNECTION
-  pool.getConnection(function(err,conn){
-    if(err) return connectionError(err,res);
-    console.log('connected as id: ' + conn.threadId);
-
-
-    // Collect the POST values
-    // POST values *should be* in JSON string format
-    var postbody = '';
-    req.on('data',function(data){
-      postbody += data;
-
-      // Check to see if connection is trying to crash system
-      // if so, destroy connection.
-      if(postbody.length > 1e6){
-        req.connection.destroy();
-      }
-    });
-
-    
-    req.on('end',function(){
-      
-      // Handle errors if POST request not
-      // formatted correctly
-      var post; 
-      try{
-
-        post = JSON.parse(postbody);
-        if(!post.hasOwnProperty('livestream_id') || !post.hasOwnProperty('operation') || !post.hasOwnProperty('movies'))
-          throw 'Error: Missing necessary property from POST request';
-
-      } catch(err){
-
-        console.error('Invalid JSON from POST request on /updatemovies.');
-        console.error(err);
-        res.end('Invalid POST content.\n');
-        conn.release();
-        return;
-
-      }
-
-      // Get the requested director (livestream_id is a unique key)
-      conn.query('SELECT * FROM directors WHERE livestream_id = ?',post.livestream_id,function(err,results){
-        if(err) return updateError(err,res);
-
-        // Check the authorization parameters
-        // If the user does not supply Authorization
-        // The server sends an error message to the client
-        if(post.Authorization !== 'Bearer ' + md5(results[0].full_name)){
-          console.error('Error: Unauthorized attempt to update "favorite_films".');
-          res.writeHead(401,{'Content-Type':'text/plain'});
-          res.end('Error: Authorization not recognized.\n');
-          return;
-        }
-
-        // At this point we are connected, the POST data is
-        // correct. Update the list of movies
-        var director = results[0];
-        var movies = (director.favorite_movies === null ? [] : director.favorite_movies.split(','));
-        var newMovies = post.movies;
-
-        // console.log(movies);
-        // console.log(newMovies);
-        // res.end();
-
-        /* Operation: add
-              simply pushes the new list of movies onto the old list
-        */ 
-        if(post.operation === 'add'){
-
-          movies.push(newMovies);
-
-
-        /* Operation: delete
-              if a movie in the supplied list of movies
-              is already a favorite movie, remove that movie
-              otherwise do nothing.
-        */
-        } else if(post.operation === 'delete'){
-
-          newMovies.forEach(function(movie){
-            var i = movies.indexOf(movie);
-            if(i !== -1)
-              movies.splice(i,1);
-          });
-
-
-        /* Operation: replace
-            during this operation the current fav. movies array
-            is replaced with the supplied array
-        */
-        } else if(post.operation === 'replace'){
-
-          movies = newMovies;
-
-
-        /* Otherwise
-            the oepration is not permitted.
-            send an error to the user (it's their fault in this case.)
-        */
-        } else {
-          console.error('Error: operation ' + post.operation + ' is not valid.');
-          res.writeHead(400,{'Content-Type':'text/plain'});
-          res.end('Error: operation ' + post.operation + ' not permitted.\n');
-          return;
-        }
-
-        // Everything is fine. Update the database.
-        conn.query('UPDATE directors SET favorite_movies=? WHERE livestream_id=?',[movies.toString(),post.livestream_id],function(err,result){
-          if(err) return updateError(err,res);
-
-          res.writeHead(200,{'Content-Type':'application/json'});
-          res.end('Favorite Movies successfully updated\n');
-          conn.release();
-        });
-      });
-    });
-  });
 }
